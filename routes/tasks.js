@@ -2,34 +2,20 @@ const express = require("express");
 
 const router = express.Router();
 
-let tasks = [
-  {
-    id: 1,
-    title: "Buy milk",
-    done: false,
-  },
-  {
-    id: 2,
-    title: "Finish homework",
-    done: false,
-  },
-  {
-    id: 3,
-    title: "Walk the dog",
-    done: true,
-  },
-];
-
-let nextId = 4;
+const db = require("../database");
 
 // GET all tasks
 router.get("/", (req, res) => {
+  const tasks = db.prepare("SELECT * FROM tasks").all();
+
   res.json(tasks);
 });
 
 // GET one task
 router.get("/:id", (req, res) => {
-  const task = tasks.find((t) => t.id === Number(req.params.id));
+  const task = db
+    .prepare("SELECT * FROM tasks WHERE id = ?")
+    .get(req.params.id);
 
   if (!task) {
     return res.status(404).json({
@@ -50,20 +36,22 @@ router.post("/", (req, res) => {
     });
   }
 
-  const task = {
-    id: nextId++,
-    title,
-    done: false,
-  };
+  const result = db
+    .prepare("INSERT INTO tasks (title, done) VALUES (?, ?)")
+    .run(title, 0);
 
-  tasks.push(task);
+  const task = db
+    .prepare("SELECT * FROM tasks WHERE id = ?")
+    .get(result.lastInsertRowid);
 
   res.status(201).json(task);
 });
 
 // PUT task
 router.put("/:id", (req, res) => {
-  const task = tasks.find((t) => t.id === Number(req.params.id));
+  const task = db
+    .prepare("SELECT * FROM tasks WHERE id = ?")
+    .get(req.params.id);
 
   if (!task) {
     return res.status(404).json({
@@ -71,25 +59,35 @@ router.put("/:id", (req, res) => {
     });
   }
 
-  const { title, done } = req.body;
+  const title = req.body.title ?? task.title;
+  const done = req.body.done ?? task.done;
 
-  if (title !== undefined) task.title = title;
-  if (done !== undefined) task.done = done;
+  db.prepare("UPDATE tasks SET title = ?, done = ? WHERE id = ?").run(
+    title,
+    done,
+    req.params.id,
+  );
 
-  res.json(task);
+  const updatedTask = db
+    .prepare("SELECT * FROM tasks WHERE id = ?")
+    .get(req.params.id);
+
+  res.json(updatedTask);
 });
 
 // DELETE task
 router.delete("/:id", (req, res) => {
-  const index = tasks.findIndex((t) => t.id === Number(req.params.id));
+  const task = db
+    .prepare("SELECT * FROM tasks WHERE id = ?")
+    .get(req.params.id);
 
-  if (index === -1) {
+  if (!task) {
     return res.status(404).json({
       error: "Task not found",
     });
   }
 
-  tasks.splice(index, 1);
+  db.prepare("DELETE FROM tasks WHERE id = ?").run(req.params.id);
 
   res.json({
     message: "Task deleted",
